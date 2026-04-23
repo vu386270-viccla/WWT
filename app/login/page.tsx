@@ -3,6 +3,8 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+import { createClient } from '../../lib/supabase/client'
+
 export default function LoginPage() {
     const router = useRouter()
     const [email, setEmail] = useState('')
@@ -10,18 +12,43 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
 
+    const supabase = createClient()
+
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
         setError('')
 
-        // In a real app, this would use Supabase auth. For now, mocking navigation based on role.
-        // E.g., if user is manager, go to /dashboard. If operator, go to /long-an/operator
-        setTimeout(() => {
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password
+        })
+
+        if (error) {
+            setError(error.message)
             setLoading(false)
-            // Mock: route to Long An operator view for demo
-            router.push('/long-an/operator')
-        }, 1000)
+            return
+        }
+
+        // Lấy thông tin profile để biết user ở site nào, role gì
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, sites(code)')
+            .eq('id', data.user.id)
+            .single()
+
+        setLoading(false)
+
+        const sitesObj: any = profile?.sites
+        const siteCode = Array.isArray(sitesObj) ? sitesObj[0]?.code : sitesObj?.code
+
+        if (profile?.role === 'manager' || profile?.role === 'admin') {
+            router.push('/dashboard') // Combined dashboard
+        } else if (siteCode) {
+            router.push(`/${siteCode}/operator`)
+        } else {
+            router.push('/long-an/operator') // Fallback
+        }
     }
 
     return (
