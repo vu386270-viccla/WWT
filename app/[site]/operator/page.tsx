@@ -48,13 +48,19 @@ export default function OperatorChecklistPage() {
     const [loading, setLoading] = useState(true)
     const [submitting, setSubmitting] = useState(false)
     const [submitted, setSubmitted] = useState(false)
+    const [isLoggedIn, setIsLoggedIn] = useState(false)
 
     const supabase = createClient()
 
-    // ── Load checklist from Supabase (daily items) ──
+    // ── Load checklist + check auth ──
     useEffect(() => {
         async function load() {
             setLoading(true)
+
+            // Check auth
+            const { data: { user } } = await supabase.auth.getUser()
+            setIsLoggedIn(!!user)
+
             const { data: keas } = await supabase
                 .from('kea_categories')
                 .select('id, code, name_vi')
@@ -160,6 +166,29 @@ export default function OperatorChecklistPage() {
 
     return (
         <div style={{ minHeight: '100vh', backgroundColor: '#F5F7FA', fontFamily: 'Inter, sans-serif', paddingBottom: '6rem' }}>
+
+            {/* ── Read-only Banner ── */}
+            {!isLoggedIn && !loading && (
+                <div style={{
+                    backgroundColor: '#FEF3C7', borderBottom: '1px solid #FCD34D',
+                    padding: '0.6rem 1rem', display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between', gap: '0.75rem',
+                }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#92400E' }}>
+                        👁️ Chế độ xem — Đăng nhập để đánh giá
+                    </span>
+                    <button
+                        onClick={() => router.push('/login')}
+                        style={{
+                            padding: '0.3rem 0.9rem', borderRadius: '8px', border: 'none',
+                            backgroundColor: '#D97706', color: 'white',
+                            fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+                        }}
+                    >
+                        Đăng nhập
+                    </button>
+                </div>
+            )}
 
             {/* ── Header ── */}
             <header style={{
@@ -276,21 +305,24 @@ export default function OperatorChecklistPage() {
                                                 {/* Answer Buttons */}
                                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                                     {[
-                                                        { val: 'yes', label: '✓ YES', bg: '#16A34A', activeBg: '#DCFCE7', activeColor: '#15803D' },
-                                                        { val: 'no', label: '✕ NO', bg: '#DC2626', activeBg: '#FEE2E2', activeColor: '#B91C1C' },
-                                                        { val: 'na', label: 'N/A', bg: '#6B7280', activeBg: '#F3F4F6', activeColor: '#4B5563' },
+                                                        { val: 'yes', label: '✓ YES', bg: '#16A34A' },
+                                                        { val: 'no', label: '✕ NO', bg: '#DC2626' },
+                                                        { val: 'na', label: 'N/A', bg: '#6B7280' },
                                                     ].map(btn => (
                                                         <button
                                                             key={btn.val}
-                                                            onClick={() => setAnswer(item.id, btn.val as 'yes' | 'no' | 'na')}
+                                                            onClick={() => isLoggedIn && setAnswer(item.id, btn.val as 'yes' | 'no' | 'na')}
+                                                            disabled={!isLoggedIn}
                                                             style={{
                                                                 flex: btn.val === 'na' ? '0 0 60px' : 1,
                                                                 padding: '0.5rem 0', borderRadius: '8px',
-                                                                fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
+                                                                fontWeight: 700, fontSize: '0.8rem',
+                                                                cursor: isLoggedIn ? 'pointer' : 'not-allowed',
                                                                 border: `2px solid ${ans === btn.val ? btn.bg : '#E5E7EB'}`,
-                                                                backgroundColor: ans === btn.val ? btn.bg : 'white',
-                                                                color: ans === btn.val ? 'white' : '#6B7280',
+                                                                backgroundColor: ans === btn.val ? btn.bg : isLoggedIn ? 'white' : '#F9FAFB',
+                                                                color: ans === btn.val ? 'white' : isLoggedIn ? '#6B7280' : '#D1D5DB',
                                                                 transition: 'all 0.15s',
+                                                                opacity: isLoggedIn ? 1 : 0.6,
                                                             }}
                                                         >
                                                             {btn.label}
@@ -332,28 +364,43 @@ export default function OperatorChecklistPage() {
                 backgroundColor: 'white', padding: '0.875rem 1rem', borderTop: '1px solid #E5E7EB',
                 display: 'flex', gap: '0.75rem',
             }}>
-                <button
-                    onClick={() => router.push(`/${siteId}/dashboard`)}
-                    style={{
-                        flex: '0 0 auto', padding: '0.75rem 1rem', borderRadius: '10px',
-                        border: '1px solid #E5E7EB', backgroundColor: 'white',
-                        fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: '#6B7280',
-                    }}
-                >
-                    💾 Lưu nháp
-                </button>
-                <button
-                    onClick={handleSubmit}
-                    disabled={submitting || answered === 0}
-                    style={{
-                        flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none',
-                        backgroundColor: answered === 0 ? '#E5E7EB' : siteColor,
-                        color: answered === 0 ? '#9CA3AF' : 'white',
-                        fontWeight: 700, fontSize: '0.875rem', cursor: answered === 0 ? 'not-allowed' : 'pointer',
-                    }}
-                >
-                    {submitting ? '⏳ Đang nộp...' : `📤 Nộp Báo Cáo (${answered}/${total})`}
-                </button>
+                {isLoggedIn ? (
+                    <>
+                        <button
+                            onClick={() => router.push(`/${siteId}/dashboard`)}
+                            style={{
+                                flex: '0 0 auto', padding: '0.75rem 1rem', borderRadius: '10px',
+                                border: '1px solid #E5E7EB', backgroundColor: 'white',
+                                fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: '#6B7280',
+                            }}
+                        >
+                            💾 Lưu nháp
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={submitting || answered === 0}
+                            style={{
+                                flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none',
+                                backgroundColor: answered === 0 ? '#E5E7EB' : siteColor,
+                                color: answered === 0 ? '#9CA3AF' : 'white',
+                                fontWeight: 700, fontSize: '0.875rem', cursor: answered === 0 ? 'not-allowed' : 'pointer',
+                            }}
+                        >
+                            {submitting ? '⏳ Đang nộp...' : `📤 Nộp Báo Cáo (${answered}/${total})`}
+                        </button>
+                    </>
+                ) : (
+                    <button
+                        onClick={() => router.push('/login')}
+                        style={{
+                            flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none',
+                            backgroundColor: '#D97706', color: 'white',
+                            fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer',
+                        }}
+                    >
+                        🔐 Đăng nhập để đánh giá
+                    </button>
+                )}
             </div>
         </div>
     )
