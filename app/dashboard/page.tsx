@@ -3,6 +3,10 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import styles from './dashboard.module.css'
+import {
+    Radar, RadarChart, PolarGrid, PolarAngleAxis,
+    ResponsiveContainer, Legend, Tooltip,
+} from 'recharts'
 
 // ─── Mock Data ──────────────────────────────────────────────────────────────
 const SITES = [
@@ -70,6 +74,119 @@ function scoreLabel(score: number) {
     if (score >= 70) return '⚠️ Cần cải thiện'
     return '❌ Không đạt'
 }
+
+// ─── Single Site Radar Chart ────────────────────────────────────────────────
+function SiteRadarChart({ keas, color }: { keas: KEA[]; color: string }) {
+    const data = keas.map(k => ({
+        subject: `KEA ${k.id}`,
+        score: k.score,
+        fullMark: 100,
+    }))
+    return (
+        <div style={{
+            backgroundColor: 'white', borderRadius: '20px',
+            border: '1px solid #E5E7EB', padding: '1.25rem',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <h2 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#374151' }}>Bản đồ KEA</h2>
+                <span style={{
+                    fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                    borderRadius: '999px', backgroundColor: `${color}15`, color,
+                }}>Radar Chart</span>
+            </div>
+            <ResponsiveContainer width="100%" height={240}>
+                <RadarChart data={data} margin={{ top: 8, right: 20, bottom: 8, left: 20 }}>
+                    <PolarGrid stroke="#E5E7EB" />
+                    <PolarAngleAxis
+                        dataKey="subject"
+                        tick={{ fontSize: 11, fontWeight: 700, fill: '#6B7280' }}
+                    />
+                    <Radar
+                        name="Điểm" dataKey="score"
+                        stroke={color} strokeWidth={2.5}
+                        fill={color} fillOpacity={0.20}
+                        dot={{ r: 4, fill: color, strokeWidth: 0 }}
+                    />
+                    <Tooltip
+                        formatter={(v: number) => [`${v}%`, 'Điểm']}
+                        contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', fontSize: '0.8rem' }}
+                    />
+                </RadarChart>
+            </ResponsiveContainer>
+            {/* Legend dots */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', marginTop: '0.25rem', justifyContent: 'center' }}>
+                {keas.map(k => (
+                    <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', color: '#6B7280' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: k.score >= 85 ? '#16A34A' : k.score >= 70 ? '#D97706' : '#DC2626', display: 'inline-block' }} />
+                        <span>{k.name}</span>
+                        <span style={{ fontWeight: 700, color: k.score >= 85 ? '#16A34A' : k.score >= 70 ? '#D97706' : '#DC2626' }}>{k.score}%</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
+
+// ─── All-Sites Radar Chart ────────────────────────────────────────────────────
+const KEA_LABELS = ['Hệ thống\nQL', 'Thiết bị &\nHoá chất', 'An toàn\n& PPE', 'Giám sát\nchỉ tiêu', 'Hồ sơ &\nĐào tạo', 'KPI &\nCải tiến']
+
+function AllSitesRadarChart() {
+    const keaCount = SITE_DATA['long-an'].keas.length
+    const data = Array.from({ length: keaCount }, (_, i) => ({
+        subject: `KEA ${ROMAN[i]}`,
+        label: KEA_LABELS[i],
+        'Long An': SITE_DATA['long-an'].keas[i].score,
+        'Tây Ninh': SITE_DATA['tay-ninh'].keas[i].score,
+        'Phan Thiết': SITE_DATA['phan-thiet'].keas[i].score,
+        fullMark: 100,
+    }))
+    return (
+        <div style={{
+            backgroundColor: 'white', borderRadius: '20px',
+            border: '1px solid #E5E7EB', padding: '1.5rem',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h2 style={{ fontWeight: 700, fontSize: '1rem', color: '#374151' }}>So sánh KEA — 3 nhà máy</h2>
+                <span style={{
+                    fontSize: '0.7rem', fontWeight: 600, padding: '0.2rem 0.6rem',
+                    borderRadius: '999px', backgroundColor: '#F3F4F6', color: '#374151',
+                }}>Radar Overlay</span>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+                <RadarChart data={data} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                    <PolarGrid stroke="#E5E7EB" />
+                    <PolarAngleAxis
+                        dataKey="subject"
+                        tick={{ fontSize: 11, fontWeight: 700, fill: '#374151' }}
+                    />
+                    <Radar name="Long An" dataKey="Long An"
+                        stroke="#E30613" strokeWidth={2} fill="#E30613" fillOpacity={0.10}
+                        dot={{ r: 3.5, fill: '#E30613', strokeWidth: 0 }} />
+                    <Radar name="Tây Ninh" dataKey="Tây Ninh"
+                        stroke="#F39200" strokeWidth={2} fill="#F39200" fillOpacity={0.10}
+                        dot={{ r: 3.5, fill: '#F39200', strokeWidth: 0 }} />
+                    <Radar name="Phan Thiết" dataKey="Phan Thiết"
+                        stroke="#0072B5" strokeWidth={2} fill="#0072B5" fillOpacity={0.10}
+                        dot={{ r: 3.5, fill: '#0072B5', strokeWidth: 0 }} />
+                    <Legend
+                        wrapperStyle={{ fontSize: '0.8rem', fontWeight: 600, paddingTop: '8px' }}
+                        formatter={(value, entry: any) => (
+                            <span style={{ color: entry.color }}>{value}</span>
+                        )}
+                    />
+                    <Tooltip
+                        formatter={(v: number, name: string) => [`${v}%`, name]}
+                        contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', fontSize: '0.8rem' }}
+                    />
+                </RadarChart>
+            </ResponsiveContainer>
+        </div>
+    )
+}
+
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI']
 
 // ─── KEA Card Component ───────────────────────────────────────────────────────
 function KeaCard({ kea, siteColor }: { kea: KEA; siteColor: string }) {
@@ -205,6 +322,9 @@ function SiteView({ siteId }: { siteId: string }) {
                 </div>
             </div>
 
+            {/* Radar Chart */}
+            <SiteRadarChart keas={data.keas} color={color} />
+
             {/* KEA List */}
             <div>
                 <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.875rem', color: '#374151' }}>
@@ -258,6 +378,9 @@ function AllSitesView({ onSelect }: { onSelect: (id: string) => void }) {
                     )
                 })}
             </div>
+
+            {/* All-Sites Radar Chart */}
+            <AllSitesRadarChart />
 
             {/* Summary Table: KEA by Site */}
             <div style={{ backgroundColor: 'white', borderRadius: '20px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
