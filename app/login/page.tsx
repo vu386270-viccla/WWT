@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-
 import { createClient } from '../../lib/supabase/client'
 
 export default function LoginPage() {
@@ -19,21 +18,17 @@ export default function LoginPage() {
         setLoading(true)
         setError('')
 
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password
-        })
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
         if (error) {
-            setError(error.message)
+            setError('Email hoặc mật khẩu không đúng')
             setLoading(false)
             return
         }
 
-        // Lấy thông tin profile để biết user ở site nào, role gì
         const { data: profile } = await supabase
             .from('profiles')
-            .select('role, sites(code)')
+            .select('role, site_id, sites(code)')
             .eq('id', data.user.id)
             .single()
 
@@ -43,92 +38,134 @@ export default function LoginPage() {
         const siteCode = Array.isArray(sitesObj) ? sitesObj[0]?.code : sitesObj?.code
 
         if (profile?.role === 'manager' || profile?.role === 'admin') {
-            router.push('/dashboard') // Combined dashboard
+            router.push('/dashboard')
         } else if (siteCode) {
-            router.push(`/${siteCode}/operator`)
+            router.push(`/${siteCode}/dashboard`)
         } else {
-            router.push('/long-an/operator') // Fallback
+            router.push('/dashboard')
         }
     }
 
     return (
-        <div style={{ padding: '2rem', maxWidth: '400px', margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#F5F7FA',
+            padding: '1.5rem',
+        }}>
+            <div style={{ width: '100%', maxWidth: '380px', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-            {/* Header */}
-            <header style={{ textAlign: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                    <div style={{ width: '40px', height: '40px', backgroundColor: 'var(--primary-red)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>
-                        V
-                    </div>
-                    <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>VICC</h1>
+                {/* Logo */}
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{
+                        width: '56px', height: '56px',
+                        backgroundColor: '#E30613', borderRadius: '14px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'white', fontWeight: 900, fontSize: '1.5rem',
+                        margin: '0 auto 1rem',
+                        boxShadow: '0 4px 14px rgba(227,6,19,0.35)',
+                    }}>V</div>
+                    <h1 style={{ fontWeight: 800, fontSize: '1.5rem', color: '#1C2026' }}>VICC WWT</h1>
+                    <p style={{ color: '#6B7280', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                        Hệ thống quản lý xử lý nước thải
+                    </p>
                 </div>
-                <h2 className="title-script" style={{ color: 'var(--primary-red)', marginBottom: '0.5rem' }}>WWT Self-Assessment</h2>
-                <p style={{ color: 'var(--text-secondary)' }}>Hệ thống đánh giá vận hành nước thải</p>
-            </header>
 
-            {/* Login Card */}
-            <section className="card">
-                <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div>
-                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem' }}>Email / Tên đăng nhập</label>
-                        <input
-                            type="text"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="nhanvien@vicc.com"
-                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem' }}>Mật khẩu</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}
-                            required
-                        />
-                    </div>
-                    {error && <p style={{ color: 'var(--primary-red)', fontSize: '0.875rem' }}>{error}</p>}
-                    <button type="submit" className="btn-primary" style={{ marginTop: '0.5rem' }} disabled={loading}>
-                        {loading ? 'Đang xử lý...' : 'Đăng nhập'}
-                    </button>
-                </form>
-            </section>
+                {/* Form */}
+                <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '20px',
+                    padding: '2rem',
+                    boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+                    border: '1px solid #E5E7EB',
+                }}>
+                    <h2 style={{ fontWeight: 700, fontSize: '1.125rem', marginBottom: '1.5rem' }}>Đăng nhập</h2>
 
-            {/* Site Selector Preview (For Manager / Admin visual representation) */}
-            <section>
-                <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '1rem', textAlign: 'center' }}>Chọn Nhà Máy / Select Site</h3>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div className="card" onClick={() => router.push('/long-an/dashboard')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '1rem', borderLeft: '6px solid var(--site-longan)' }}>
-                        <div style={{ flex: 1 }}>
-                            <h4 style={{ fontWeight: 700, fontSize: '1.125rem' }}>Long An</h4>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>67 km từ HCM</p>
+                    <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: '#374151' }}>
+                                Email
+                            </label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                                placeholder="nhanvien@vicc.com"
+                                required
+                                style={{
+                                    width: '100%', padding: '0.75rem 1rem',
+                                    borderRadius: '10px', border: '1.5px solid #E5E7EB',
+                                    fontSize: '0.9rem', outline: 'none',
+                                    transition: 'border-color 0.2s',
+                                    boxSizing: 'border-box',
+                                }}
+                                onFocus={e => e.target.style.borderColor = '#E30613'}
+                                onBlur={e => e.target.style.borderColor = '#E5E7EB'}
+                            />
                         </div>
-                        <div style={{ color: 'var(--site-longan)' }}>→</div>
-                    </div>
 
-                    <div className="card" onClick={() => router.push('/tay-ninh/dashboard')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '1rem', borderLeft: '6px solid var(--site-tayninh)' }}>
-                        <div style={{ flex: 1 }}>
-                            <h4 style={{ fontWeight: 700, fontSize: '1.125rem' }}>Tây Ninh</h4>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>99 km từ HCM</p>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: '#374151' }}>
+                                Mật khẩu
+                            </label>
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                placeholder="••••••••"
+                                required
+                                style={{
+                                    width: '100%', padding: '0.75rem 1rem',
+                                    borderRadius: '10px', border: '1.5px solid #E5E7EB',
+                                    fontSize: '0.9rem', outline: 'none',
+                                    boxSizing: 'border-box',
+                                }}
+                                onFocus={e => e.target.style.borderColor = '#E30613'}
+                                onBlur={e => e.target.style.borderColor = '#E5E7EB'}
+                            />
                         </div>
-                        <div style={{ color: 'var(--site-tayninh)' }}>→</div>
-                    </div>
 
-                    <div className="card" onClick={() => router.push('/phan-thiet/dashboard')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '1rem', borderLeft: '6px solid var(--site-phanthiet)' }}>
-                        <div style={{ flex: 1 }}>
-                            <h4 style={{ fontWeight: 700, fontSize: '1.125rem' }}>Phan Thiết</h4>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>200 km từ HCM</p>
-                        </div>
-                        <div style={{ color: 'var(--site-phanthiet)' }}>→</div>
-                    </div>
+                        {error && (
+                            <div style={{
+                                padding: '0.75rem 1rem',
+                                backgroundColor: '#FEF2F2',
+                                border: '1px solid #FECACA',
+                                borderRadius: '8px',
+                                fontSize: '0.8rem',
+                                color: '#DC2626',
+                                fontWeight: 500,
+                            }}>
+                                ⚠️ {error}
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            style={{
+                                marginTop: '0.5rem',
+                                padding: '0.875rem',
+                                backgroundColor: loading ? '#9CA3AF' : '#E30613',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '10px',
+                                fontWeight: 700,
+                                fontSize: '0.95rem',
+                                cursor: loading ? 'not-allowed' : 'pointer',
+                                transition: 'background-color 0.2s',
+                            }}
+                        >
+                            {loading ? '⏳ Đang đăng nhập...' : 'Đăng nhập'}
+                        </button>
+                    </form>
                 </div>
-            </section>
 
+                <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#9CA3AF' }}>
+                    VICC Group · WWT Management System · ISO 14001
+                </p>
+            </div>
         </div>
     )
 }

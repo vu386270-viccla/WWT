@@ -8,7 +8,6 @@ export type AssessmentType = 'daily' | 'monthly'
 export type AssessmentStatus = 'draft' | 'submitted' | 'approved'
 export type Answer = 'yes' | 'no' | 'na'
 export type Frequency = 'daily' | 'monthly' | 'both'
-export type Shift = '1' | '2' | '3'
 
 export interface Site {
     id: string
@@ -42,7 +41,6 @@ export interface ChecklistItem {
     frequency: Frequency
     is_active: boolean
     sort_order: number
-    // joined
     kea?: KeaCategory
 }
 
@@ -52,14 +50,12 @@ export interface Assessment {
     assessor_id: string
     assessment_date: string
     assessment_type: AssessmentType
-    shift: Shift | null
     status: AssessmentStatus
     overall_score: number | null
     manager_comment: string | null
     approved_by: string | null
     approved_at: string | null
     created_at: string
-    // joined
     site?: Site
     assessor?: Profile
 }
@@ -72,8 +68,27 @@ export interface AssessmentResponse {
     comment: string | null
     required_action: string | null
     deadline: string | null
-    // joined
     item?: ChecklistItem
+}
+
+export interface ParameterLog {
+    id: string
+    site_id: string
+    log_date: string
+    logged_by: string
+    // Thông số đo hàng ngày
+    ph_in: number | null          // pH đầu vào
+    ph_out: number | null         // pH đầu ra (5.5–9.0)
+    do_mbbr: number | null        // DO bể MBBR mg/L (1.5–2.5)
+    sv30_ml: number | null        // SV30 ml/L (300–700)
+    svi_ml_g: number | null       // SVI ml/g (≤150)
+    mlss_mg_l: number | null      // MLSS mg/L (2500–3500)
+    cod_out: number | null        // COD đầu ra mg/L (≤150)
+    nh4_out: number | null        // NH4+ đầu ra mg/L (≤10)
+    flow_out_m3: number | null    // Lưu lượng đầu ra m³/ngày (≤70)
+    electricity_kwh: number | null // Chỉ số điện kế kWh
+    notes: string | null
+    created_at: string
 }
 
 // View types
@@ -85,7 +100,6 @@ export interface AssessmentScore {
     color_hex: string
     assessment_date: string
     assessment_type: AssessmentType
-    shift: Shift | null
     status: AssessmentStatus
     assessor_name: string
     yes_count: number
@@ -107,15 +121,23 @@ export interface OpenCapa {
     assessor_name: string
 }
 
-// Site config
-export const SITES: Record<SiteCode, { name: string; color: string; distance: string }> = {
-    'long-an': { name: 'Long An', color: '#E30613', distance: '67 km từ HCM' },
-    'tay-ninh': { name: 'Tây Ninh', color: '#F39200', distance: '99 km từ HCM' },
-    'phan-thiet': { name: 'Phan Thiết', color: '#0072B5', distance: '200 km từ HCM' },
+// Parameter thresholds (QCVN 40:2011 Cột B + vận hành)
+export const PARAM_THRESHOLDS = {
+    ph_in:         { min: 4, max: 12, label: 'pH đầu vào', unit: '' },
+    ph_out:        { min: 5.5, max: 9.0, label: 'pH đầu ra', unit: '' },
+    do_mbbr:       { min: 1.5, max: 2.5, label: 'DO bể MBBR', unit: 'mg/L' },
+    sv30_ml:       { min: 300, max: 700, label: 'SV30', unit: 'ml/L' },
+    svi_ml_g:      { min: 0, max: 150, label: 'SVI', unit: 'ml/g' },
+    mlss_mg_l:     { min: 2500, max: 3500, label: 'MLSS', unit: 'mg/L' },
+    cod_out:       { min: 0, max: 150, label: 'COD đầu ra', unit: 'mg/L' },
+    nh4_out:       { min: 0, max: 10, label: 'NH₄⁺ đầu ra', unit: 'mg/L' },
+    flow_out_m3:   { min: 0, max: 70, label: 'Lưu lượng đầu ra', unit: 'm³/ngày' },
+    electricity_kwh: { min: 0, max: 99999, label: 'Chỉ số điện kế', unit: 'kWh' },
 }
 
-export const SHIFTS: Record<Shift, string> = {
-    '1': 'Ca 1 (6:00 – 14:00)',
-    '2': 'Ca 2 (14:00 – 22:00)',
-    '3': 'Ca 3 (22:00 – 6:00)',
+// Site config
+export const SITES: Record<SiteCode, { name: string; color: string; distance: string }> = {
+    'long-an':    { name: 'Long An',    color: '#E30613', distance: '67 km từ HCM' },
+    'tay-ninh':   { name: 'Tây Ninh',   color: '#F39200', distance: '99 km từ HCM' },
+    'phan-thiet': { name: 'Phan Thiết', color: '#0072B5', distance: '200 km từ HCM' },
 }

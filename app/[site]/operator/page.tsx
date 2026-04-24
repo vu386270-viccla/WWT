@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/client'
+import { PARAM_THRESHOLDS } from '../../../lib/types'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 type ChecklistItem = {
     id: number
     code: string
@@ -13,59 +13,83 @@ type ChecklistItem = {
     kea_id: number
     sort_order: number
 }
-type KEAGroup = {
-    id: number
-    code: string
-    name_vi: string
-    items: ChecklistItem[]
-}
+type KEAGroup = { id: number; code: string; name_vi: string; items: ChecklistItem[] }
 type Answers = Record<number, 'yes' | 'no' | 'na' | null>
 type Comments = Record<number, string>
 
-const SITE_COLORS: Record<string, string> = {
-    'long-an': '#E30613',
-    'tay-ninh': '#F39200',
-    'phan-thiet': '#0072B5',
-}
-const SITE_NAMES: Record<string, string> = {
-    'long-an': 'Long An',
-    'tay-ninh': 'Tây Ninh',
-    'phan-thiet': 'Phan Thiết',
+type ParamValues = {
+    ph_in: string; ph_out: string; do_mbbr: string
+    sv30_ml: string; svi_ml_g: string; mlss_mg_l: string
+    cod_out: string; nh4_out: string; flow_out_m3: string; electricity_kwh: string
+    notes: string
 }
 
-export default function OperatorChecklistPage() {
+const SITE_COLORS: Record<string, string> = {
+    'long-an': '#E30613', 'tay-ninh': '#F39200', 'phan-thiet': '#0072B5',
+}
+const SITE_NAMES: Record<string, string> = {
+    'long-an': 'Long An', 'tay-ninh': 'Tây Ninh', 'phan-thiet': 'Phan Thiết',
+}
+
+function isOutOfRange(key: keyof typeof PARAM_THRESHOLDS, value: string): boolean {
+    const v = parseFloat(value)
+    if (isNaN(v)) return false
+    const t = PARAM_THRESHOLDS[key]
+    return v < t.min || v > t.max
+}
+
+const EMPTY_PARAMS: ParamValues = {
+    ph_in: '', ph_out: '', do_mbbr: '',
+    sv30_ml: '', svi_ml_g: '', mlss_mg_l: '',
+    cod_out: '', nh4_out: '', flow_out_m3: '', electricity_kwh: '',
+    notes: '',
+}
+
+export default function OperatorDailyPage() {
     const params = useParams()
     const router = useRouter()
     const siteId = params.site as string
     const siteColor = SITE_COLORS[siteId] ?? '#E30613'
     const siteName = SITE_NAMES[siteId] ?? 'Site'
 
-    const [shift, setShift] = useState('1')
     const [keaGroups, setKeaGroups] = useState<KEAGroup[]>([])
     const [answers, setAnswers] = useState<Answers>({})
     const [comments, setComments] = useState<Comments>({})
     const [expandedKea, setExpandedKea] = useState<number | null>(null)
+    const [paramValues, setParamValues] = useState<ParamValues>(EMPTY_PARAMS)
     const [loading, setLoading] = useState(true)
     const [submitting, setSubmitting] = useState(false)
     const [submitted, setSubmitted] = useState(false)
-    const [isLoggedIn, setIsLoggedIn] = useState(false)
+    const [alreadySubmitted, setAlreadySubmitted] = useState(false)
+    const [activeTab, setActiveTab] = useState<'checklist' | 'params'>('checklist')
 
     const supabase = createClient()
+    const today = new Date().toISOString().split('T')[0]
+    const todayVN = new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
 
-    // ── Load checklist + check auth ──
     useEffect(() => {
         async function load() {
             setLoading(true)
-
-            // Check auth
             const { data: { user } } = await supabase.auth.getUser()
-            setIsLoggedIn(!!user)
+            if (!user) { router.push('/login'); return }
 
+            // Lấy site_id
+            const { data: siteRow } = await supabase.from('sites').select('id').eq('code', siteId).single()
+            if (!siteRow) { setLoading(false); return }
+
+            // Kiểm tra đã nộp hôm nay chưa
+            const { data: existing } = await supabase
+                .from('assessments')
+                .select('id, overall_score, status')
+                .eq('site_id', siteRow.id)
+                .eq('assessment_date', today)
+                .eq('assessment_type', 'daily')
+                .single()
+            if (existing) { setAlreadySubmitted(true); setLoading(false); return }
+
+            // Load checklist items (daily)
             const { data: keas } = await supabase
-                .from('kea_categories')
-                .select('id, code, name_vi')
-                .order('id')
-
+                .from('kea_categories').select('id, code, name_vi').order('id')
             const { data: items } = await supabase
                 .from('checklist_items')
                 .select('id, code, question_vi, guideline_vi, kea_id, sort_order')
@@ -75,10 +99,7 @@ export default function OperatorChecklistPage() {
 
             if (keas && items) {
                 const groups: KEAGroup[] = keas
-                    .map(k => ({
-                        ...k,
-                        items: items.filter(i => i.kea_id === k.id),
-                    }))
+                    .map(k => ({ ...k, items: items.filter(i => i.kea_id === k.id) }))
                     .filter(g => g.items.length > 0)
                 setKeaGroups(groups)
                 if (groups.length > 0) setExpandedKea(groups[0].id)
@@ -86,58 +107,49 @@ export default function OperatorChecklistPage() {
             setLoading(false)
         }
         load()
-    }, [])
+    }, [siteId])
 
-    // ── Stats ──
     const allItems = keaGroups.flatMap(g => g.items)
     const answered = allItems.filter(i => answers[i.id] != null).length
     const total = allItems.length
     const pct = total > 0 ? Math.round((answered / total) * 100) : 0
 
-    function setAnswer(itemId: number, val: 'yes' | 'no' | 'na') {
-        setAnswers(prev => ({ ...prev, [itemId]: val }))
-    }
-    function setComment(itemId: number, val: string) {
-        setComments(prev => ({ ...prev, [itemId]: val }))
-    }
+    // Đếm params đã điền
+    const paramKeys = Object.keys(PARAM_THRESHOLDS) as (keyof typeof PARAM_THRESHOLDS)[]
+    const paramFilled = paramKeys.filter(k => paramValues[k as keyof ParamValues] !== '').length
+    const outOfRange = paramKeys.filter(k => isOutOfRange(k, paramValues[k as keyof ParamValues]))
 
-    // ── Submit to Supabase ──
     async function handleSubmit() {
         setSubmitting(true)
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { alert('Bạn chưa đăng nhập!'); setSubmitting(false); return }
+        if (!user) { alert('Phiên đăng nhập hết hạn!'); router.push('/login'); return }
 
-        // Get site_id
-        const { data: siteRow } = await supabase
-            .from('sites').select('id').eq('code', siteId).single()
+        const { data: siteRow } = await supabase.from('sites').select('id').eq('code', siteId).single()
         if (!siteRow) { alert('Không tìm thấy nhà máy!'); setSubmitting(false); return }
 
-        // Create assessment
         const yesCount = Object.values(answers).filter(v => v === 'yes').length
         const noCount = Object.values(answers).filter(v => v === 'no').length
         const scorePct = (yesCount + noCount) > 0 ? Math.round(yesCount / (yesCount + noCount) * 100) : 0
 
+        // Tạo assessment
         const { data: assessment, error: aErr } = await supabase
             .from('assessments')
             .insert({
                 site_id: siteRow.id,
                 assessor_id: user.id,
-                assessment_date: new Date().toISOString().split('T')[0],
+                assessment_date: today,
                 assessment_type: 'daily',
-                shift,
                 status: 'submitted',
                 overall_score: scorePct,
             })
-            .select('id')
-            .single()
+            .select('id').single()
 
         if (aErr || !assessment) {
             alert('Lỗi lưu đánh giá: ' + aErr?.message)
-            setSubmitting(false)
-            return
+            setSubmitting(false); return
         }
 
-        // Insert responses
+        // Lưu responses
         const responses = allItems
             .filter(i => answers[i.id] != null)
             .map(i => ({
@@ -146,14 +158,35 @@ export default function OperatorChecklistPage() {
                 answer: answers[i.id],
                 comment: comments[i.id] || null,
             }))
-
         await supabase.from('assessment_responses').insert(responses)
+
+        // Lưu parameter log (nếu có điền)
+        if (paramFilled > 0) {
+            const toNum = (v: string) => v === '' ? null : parseFloat(v)
+            await supabase.from('parameter_logs').upsert({
+                site_id: siteRow.id,
+                log_date: today,
+                logged_by: user.id,
+                ph_in: toNum(paramValues.ph_in),
+                ph_out: toNum(paramValues.ph_out),
+                do_mbbr: toNum(paramValues.do_mbbr),
+                sv30_ml: toNum(paramValues.sv30_ml),
+                svi_ml_g: toNum(paramValues.svi_ml_g),
+                mlss_mg_l: toNum(paramValues.mlss_mg_l),
+                cod_out: toNum(paramValues.cod_out),
+                nh4_out: toNum(paramValues.nh4_out),
+                flow_out_m3: toNum(paramValues.flow_out_m3),
+                electricity_kwh: toNum(paramValues.electricity_kwh),
+                notes: paramValues.notes || null,
+            }, { onConflict: 'site_id,log_date' })
+        }
+
         setSubmitting(false)
         setSubmitted(true)
         setTimeout(() => router.push(`/${siteId}/dashboard`), 2000)
     }
 
-    // ── UI ──
+    // ── Submitted ────────────────────────────────────────────────────
     if (submitted) {
         return (
             <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0FDF4', gap: '1rem', padding: '2rem' }}>
@@ -164,59 +197,96 @@ export default function OperatorChecklistPage() {
         )
     }
 
-    return (
-        <div style={{ minHeight: '100vh', backgroundColor: '#F5F7FA', fontFamily: 'Inter, sans-serif', paddingBottom: '6rem' }}>
-
-            {/* ── Read-only Banner ── */}
-            {!isLoggedIn && !loading && (
-                <div style={{
-                    backgroundColor: '#FEF3C7', borderBottom: '1px solid #FCD34D',
-                    padding: '0.6rem 1rem', display: 'flex', alignItems: 'center',
-                    justifyContent: 'space-between', gap: '0.75rem',
-                }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#92400E' }}>
-                        👁️ Chế độ xem — Đăng nhập để đánh giá
-                    </span>
+    // ── Already submitted ────────────────────────────────────────────
+    if (alreadySubmitted) {
+        return (
+            <div style={{ minHeight: '100vh', backgroundColor: '#F5F7FA', fontFamily: 'Inter, sans-serif' }}>
+                <header style={{ backgroundColor: 'white', borderBottom: '1px solid #E5E7EB', padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <button onClick={() => router.back()} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#6B7280' }}>←</button>
+                    <div>
+                        <h1 style={{ fontWeight: 800, fontSize: '1.1rem' }}>Nhật Ký Vận Hành Hàng Ngày</h1>
+                        <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>{siteName} · {todayVN}</p>
+                    </div>
+                </header>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '1rem', padding: '2rem' }}>
+                    <div style={{ fontSize: '3rem' }}>✅</div>
+                    <h2 style={{ fontWeight: 700, fontSize: '1.25rem', color: '#16A34A' }}>Đã nộp báo cáo hôm nay</h2>
+                    <p style={{ color: '#6B7280', textAlign: 'center' }}>Nhật ký vận hành ngày {todayVN} đã được ghi nhận.</p>
                     <button
-                        onClick={() => router.push('/login')}
-                        style={{
-                            padding: '0.3rem 0.9rem', borderRadius: '8px', border: 'none',
-                            backgroundColor: '#D97706', color: 'white',
-                            fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
-                        }}
+                        onClick={() => router.push(`/${siteId}/dashboard`)}
+                        style={{ marginTop: '1rem', padding: '0.75rem 2rem', backgroundColor: siteColor, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700, cursor: 'pointer' }}
                     >
-                        Đăng nhập
+                        Xem Dashboard
                     </button>
                 </div>
-            )}
+            </div>
+        )
+    }
 
-            {/* ── Header ── */}
-            <header style={{
-                position: 'sticky', top: 0, zIndex: 20, backgroundColor: 'white',
-                borderBottom: '1px solid #E5E7EB', padding: '0.875rem 1rem',
-            }}>
+    // ── Param input helper ──
+    function ParamInput({ label, unit, fieldKey, placeholder, stdText }: {
+        label: string; unit: string; fieldKey: keyof ParamValues
+        placeholder?: string; stdText?: string
+    }) {
+        const val = paramValues[fieldKey]
+        const out = fieldKey in PARAM_THRESHOLDS
+            ? isOutOfRange(fieldKey as keyof typeof PARAM_THRESHOLDS, val) : false
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>
+                    {label} {unit && <span style={{ color: '#9CA3AF', fontWeight: 400 }}>({unit})</span>}
+                    {stdText && <span style={{ color: '#9CA3AF', fontWeight: 400 }}> — {stdText}</span>}
+                </label>
+                <input
+                    type="number"
+                    step="0.01"
+                    value={val}
+                    onChange={e => setParamValues(p => ({ ...p, [fieldKey]: e.target.value }))}
+                    placeholder={placeholder ?? '—'}
+                    style={{
+                        padding: '0.6rem 0.75rem',
+                        borderRadius: '8px',
+                        border: `1.5px solid ${out ? '#FCA5A5' : val !== '' ? '#BBF7D0' : '#E5E7EB'}`,
+                        backgroundColor: out ? '#FEF2F2' : val !== '' ? '#F0FDF4' : 'white',
+                        fontSize: '0.9rem',
+                        width: '100%',
+                        boxSizing: 'border-box' as const,
+                        color: out ? '#DC2626' : '#1C2026',
+                    }}
+                />
+                {out && (
+                    <span style={{ fontSize: '0.7rem', color: '#DC2626', fontWeight: 600 }}>
+                        ⚠️ Ngoài tiêu chuẩn! Cần kiểm tra và báo cáo HSE.
+                    </span>
+                )}
+            </div>
+        )
+    }
+
+    return (
+        <div style={{ minHeight: '100vh', backgroundColor: '#F5F7FA', fontFamily: 'Inter, sans-serif', paddingBottom: '5rem' }}>
+
+            {/* Header */}
+            <header style={{ position: 'sticky', top: 0, zIndex: 20, backgroundColor: 'white', borderBottom: '1px solid #E5E7EB', padding: '0.875rem 1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <button onClick={() => router.back()} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#6B7280' }}>←</button>
                     <div style={{ flex: 1 }}>
-                        <h1 style={{ fontWeight: 800, fontSize: '1.1rem' }}>Đánh Giá Hàng Ngày</h1>
-                        <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>
-                            {siteName} · {new Date().toLocaleDateString('vi-VN')}
-                        </p>
+                        <h1 style={{ fontWeight: 800, fontSize: '1.1rem' }}>Nhật Ký Vận Hành</h1>
+                        <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>{siteName} · {todayVN}</p>
                     </div>
-                    <span style={{
-                        backgroundColor: siteColor, color: 'white',
-                        padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700,
-                    }}>{siteName}</span>
+                    <span style={{ backgroundColor: siteColor, color: 'white', padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 700 }}>
+                        {siteName}
+                    </span>
                 </div>
 
-                {/* Shift Selector */}
+                {/* Tab Switcher */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                    {[['1', 'Ca 1 (6h–14h)'], ['2', 'Ca 2 (14h–22h)'], ['3', 'Ca 3 (22h–6h)']].map(([val, label]) => (
-                        <button key={val} onClick={() => setShift(val)} style={{
-                            flex: 1, padding: '0.4rem 0', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600,
-                            border: `1px solid ${shift === val ? siteColor : '#E5E7EB'}`,
-                            backgroundColor: shift === val ? siteColor : 'white',
-                            color: shift === val ? 'white' : '#6B7280', cursor: 'pointer',
+                    {([['checklist', `📋 Kiểm tra (${answered}/${total})`], ['params', `📊 Thông số (${paramFilled}/${paramKeys.length})`]] as const).map(([tab, label]) => (
+                        <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                            flex: 1, padding: '0.5rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600,
+                            border: `1.5px solid ${activeTab === tab ? siteColor : '#E5E7EB'}`,
+                            backgroundColor: activeTab === tab ? siteColor : 'white',
+                            color: activeTab === tab ? 'white' : '#6B7280', cursor: 'pointer',
                         }}>
                             {label}
                         </button>
@@ -224,183 +294,210 @@ export default function OperatorChecklistPage() {
                 </div>
 
                 {/* Progress Bar */}
-                <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.3rem', color: '#374151' }}>
-                        <span>{answered}/{total} câu đã trả lời</span>
-                        <span style={{ color: siteColor }}>{pct}%</span>
+                {activeTab === 'checklist' && (
+                    <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 600, marginBottom: '0.3rem', color: '#374151' }}>
+                            <span>{answered}/{total} hạng mục đã trả lời</span>
+                            <span style={{ color: siteColor }}>{pct}%</span>
+                        </div>
+                        <div style={{ height: '5px', backgroundColor: '#E5E7EB', borderRadius: '999px', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, backgroundColor: siteColor, borderRadius: '999px', transition: 'width 0.4s' }} />
+                        </div>
                     </div>
-                    <div style={{ height: '6px', backgroundColor: '#E5E7EB', borderRadius: '999px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${pct}%`, backgroundColor: siteColor, borderRadius: '999px', transition: 'width 0.4s' }} />
+                )}
+                {activeTab === 'params' && outOfRange.length > 0 && (
+                    <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#FEF3C7', borderRadius: '8px', fontSize: '0.75rem', color: '#B45309', fontWeight: 600 }}>
+                        ⚠️ {outOfRange.length} thông số ngoài tiêu chuẩn — cần kiểm tra!
                     </div>
-                </div>
+                )}
             </header>
 
-            {/* ── Content ── */}
             <main style={{ padding: '1rem', maxWidth: '700px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: '3rem', color: '#6B7280' }}>
                         <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
-                        <p>Đang tải danh sách câu hỏi...</p>
+                        <p>Đang tải...</p>
                     </div>
-                ) : keaGroups.map(kea => {
-                    const isOpen = expandedKea === kea.id
-                    const keaAnswered = kea.items.filter(i => answers[i.id] != null).length
-                    const keaTotal = kea.items.length
-                    const allGood = keaAnswered === keaTotal
-                    return (
-                        <div key={kea.id} style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #E5E7EB', overflow: 'hidden' }}>
-                            {/* KEA Header */}
-                            <div
-                                onClick={() => setExpandedKea(isOpen ? null : kea.id)}
-                                style={{
-                                    padding: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.875rem',
-                                    backgroundColor: isOpen ? '#FAFAFA' : 'white',
-                                    borderBottom: isOpen ? '1px solid #E5E7EB' : 'none',
-                                }}
-                            >
-                                <div style={{
-                                    minWidth: '38px', height: '38px', borderRadius: '10px',
-                                    backgroundColor: siteColor, color: 'white',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontWeight: 900, fontSize: '0.8rem',
-                                }}>
-                                    {kea.code}
+                ) : activeTab === 'checklist' ? (
+                    /* ── CHECKLIST TAB ── */
+                    keaGroups.map(kea => {
+                        const isOpen = expandedKea === kea.id
+                        const keaAnswered = kea.items.filter(i => answers[i.id] != null).length
+                        const keaTotal = kea.items.length
+                        const allDone = keaAnswered === keaTotal
+                        return (
+                            <div key={kea.id} style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+                                <div
+                                    onClick={() => setExpandedKea(isOpen ? null : kea.id)}
+                                    style={{ padding: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.875rem', backgroundColor: isOpen ? '#FAFAFA' : 'white', borderBottom: isOpen ? '1px solid #E5E7EB' : 'none' }}
+                                >
+                                    <div style={{ minWidth: '38px', height: '38px', borderRadius: '10px', backgroundColor: siteColor, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.8rem' }}>
+                                        {kea.code}
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <p style={{ fontWeight: 700, fontSize: '0.875rem' }}>{kea.name_vi}</p>
+                                        <p style={{ fontSize: '0.7rem', color: '#6B7280', marginTop: '0.1rem' }}>{keaAnswered}/{keaTotal} hạng mục</p>
+                                    </div>
+                                    <span style={{ padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 700, backgroundColor: allDone ? '#D1FAE5' : keaAnswered > 0 ? '#FEF3C7' : '#F3F4F6', color: allDone ? '#065F46' : keaAnswered > 0 ? '#B45309' : '#9CA3AF' }}>
+                                        {allDone ? '✓ Xong' : keaAnswered > 0 ? `${keaAnswered}/${keaTotal}` : 'Chưa làm'}
+                                    </span>
+                                    <span style={{ color: '#9CA3AF', fontSize: '0.75rem', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
                                 </div>
-                                <div style={{ flex: 1 }}>
-                                    <p style={{ fontWeight: 700, fontSize: '0.875rem' }}>{kea.name_vi}</p>
-                                    <p style={{ fontSize: '0.7rem', color: '#6B7280', marginTop: '0.1rem' }}>{keaAnswered}/{keaTotal} câu</p>
-                                </div>
-                                <span style={{
-                                    padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.7rem', fontWeight: 700,
-                                    backgroundColor: allGood ? '#D1FAE5' : keaAnswered > 0 ? '#FEF3C7' : '#F3F4F6',
-                                    color: allGood ? '#065F46' : keaAnswered > 0 ? '#B45309' : '#9CA3AF',
-                                }}>
-                                    {allGood ? '✓ Xong' : keaAnswered > 0 ? `${keaAnswered}/${keaTotal}` : 'Chưa làm'}
-                                </span>
-                                <span style={{ color: '#9CA3AF', fontSize: '0.75rem', transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▼</span>
-                            </div>
 
-                            {/* Items */}
-                            {isOpen && (
-                                <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                    {kea.items.map((item, idx) => {
-                                        const ans = answers[item.id]
-                                        return (
-                                            <div key={item.id} style={{
-                                                padding: '0.875rem', borderRadius: '12px',
-                                                backgroundColor: ans === 'yes' ? '#F0FDF4' : ans === 'no' ? '#FEF2F2' : '#F9FAFB',
-                                                border: `1px solid ${ans === 'yes' ? '#BBF7D0' : ans === 'no' ? '#FECACA' : '#E5E7EB'}`,
-                                            }}>
-                                                {/* Question */}
-                                                <p style={{ fontSize: '0.75rem', color: '#9CA3AF', fontWeight: 700, marginBottom: '0.3rem' }}>{item.code}</p>
-                                                <p style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.625rem', lineHeight: 1.5 }}>{item.question_vi}</p>
-
-                                                {/* Guideline (collapsible) */}
-                                                {item.guideline_vi && (
-                                                    <p style={{ fontSize: '0.75rem', color: '#6B7280', marginBottom: '0.625rem', fontStyle: 'italic', lineHeight: 1.4 }}>
-                                                        💡 {item.guideline_vi}
-                                                    </p>
-                                                )}
-
-                                                {/* Answer Buttons */}
-                                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                    {[
-                                                        { val: 'yes', label: '✓ YES', bg: '#16A34A' },
-                                                        { val: 'no', label: '✕ NO', bg: '#DC2626' },
-                                                        { val: 'na', label: 'N/A', bg: '#6B7280' },
-                                                    ].map(btn => (
-                                                        <button
-                                                            key={btn.val}
-                                                            onClick={() => isLoggedIn && setAnswer(item.id, btn.val as 'yes' | 'no' | 'na')}
-                                                            disabled={!isLoggedIn}
-                                                            style={{
-                                                                flex: btn.val === 'na' ? '0 0 60px' : 1,
-                                                                padding: '0.5rem 0', borderRadius: '8px',
-                                                                fontWeight: 700, fontSize: '0.8rem',
-                                                                cursor: isLoggedIn ? 'pointer' : 'not-allowed',
-                                                                border: `2px solid ${ans === btn.val ? btn.bg : '#E5E7EB'}`,
-                                                                backgroundColor: ans === btn.val ? btn.bg : isLoggedIn ? 'white' : '#F9FAFB',
-                                                                color: ans === btn.val ? 'white' : isLoggedIn ? '#6B7280' : '#D1D5DB',
-                                                                transition: 'all 0.15s',
-                                                                opacity: isLoggedIn ? 1 : 0.6,
-                                                            }}
-                                                        >
-                                                            {btn.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-
-                                                {/* Comment box when NO */}
-                                                {ans === 'no' && (
-                                                    <div style={{ marginTop: '0.75rem', backgroundColor: '#FEF2F2', padding: '0.75rem', borderRadius: '8px', borderLeft: '3px solid #DC2626' }}>
-                                                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#DC2626', marginBottom: '0.4rem' }}>
-                                                            ⚠️ Ghi chú / Hành động khắc phục *
-                                                        </label>
-                                                        <textarea
-                                                            value={comments[item.id] || ''}
-                                                            onChange={e => setComment(item.id, e.target.value)}
-                                                            placeholder="Mô tả vấn đề và cách khắc phục..."
-                                                            style={{
-                                                                width: '100%', padding: '0.5rem', borderRadius: '6px',
-                                                                border: '1px solid #FCA5A5', minHeight: '60px',
-                                                                fontSize: '0.8rem', resize: 'vertical', boxSizing: 'border-box',
-                                                            }}
-                                                        />
+                                {isOpen && (
+                                    <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                                        {kea.items.map(item => {
+                                            const ans = answers[item.id]
+                                            return (
+                                                <div key={item.id} style={{ padding: '0.875rem', borderRadius: '12px', backgroundColor: ans === 'yes' ? '#F0FDF4' : ans === 'no' ? '#FEF2F2' : '#F9FAFB', border: `1px solid ${ans === 'yes' ? '#BBF7D0' : ans === 'no' ? '#FECACA' : '#E5E7EB'}` }}>
+                                                    <p style={{ fontSize: '0.7rem', color: '#9CA3AF', fontWeight: 700, marginBottom: '0.25rem' }}>{item.code}</p>
+                                                    <p style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', lineHeight: 1.5 }}>{item.question_vi}</p>
+                                                    {item.guideline_vi && (
+                                                        <p style={{ fontSize: '0.72rem', color: '#6B7280', marginBottom: '0.5rem', fontStyle: 'italic', lineHeight: 1.4 }}>
+                                                            💡 {item.guideline_vi}
+                                                        </p>
+                                                    )}
+                                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                        {([
+                                                            { val: 'yes', label: '✓ ĐẠT', bg: '#16A34A' },
+                                                            { val: 'no', label: '✕ KHÔNG', bg: '#DC2626' },
+                                                            { val: 'na', label: 'N/A', bg: '#6B7280' },
+                                                        ] as const).map(btn => (
+                                                            <button
+                                                                key={btn.val}
+                                                                onClick={() => setAnswers(p => ({ ...p, [item.id]: btn.val }))}
+                                                                style={{
+                                                                    flex: btn.val === 'na' ? '0 0 60px' : 1,
+                                                                    padding: '0.5rem 0', borderRadius: '8px',
+                                                                    fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
+                                                                    border: `2px solid ${ans === btn.val ? btn.bg : '#E5E7EB'}`,
+                                                                    backgroundColor: ans === btn.val ? btn.bg : 'white',
+                                                                    color: ans === btn.val ? 'white' : '#6B7280',
+                                                                    transition: 'all 0.15s',
+                                                                }}
+                                                            >
+                                                                {btn.label}
+                                                            </button>
+                                                        ))}
                                                     </div>
-                                                )}
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            )}
+                                                    {ans === 'no' && (
+                                                        <div style={{ marginTop: '0.625rem', backgroundColor: '#FEF2F2', padding: '0.625rem', borderRadius: '8px', borderLeft: '3px solid #DC2626' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, color: '#DC2626', marginBottom: '0.35rem' }}>
+                                                                ⚠️ Ghi chú / Hành động khắc phục
+                                                            </label>
+                                                            <textarea
+                                                                value={comments[item.id] || ''}
+                                                                onChange={e => setComments(p => ({ ...p, [item.id]: e.target.value }))}
+                                                                placeholder="Mô tả vấn đề và cách khắc phục..."
+                                                                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #FCA5A5', minHeight: '56px', fontSize: '0.8rem', resize: 'vertical', boxSizing: 'border-box' }}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })
+                ) : (
+                    /* ── PARAMS TAB ── */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {/* Cảnh báo QCVN */}
+                        {outOfRange.length > 0 && (
+                            <div style={{ padding: '1rem', backgroundColor: '#FEF2F2', borderRadius: '12px', border: '1px solid #FECACA' }}>
+                                <p style={{ fontWeight: 700, fontSize: '0.875rem', color: '#DC2626', marginBottom: '0.5rem' }}>
+                                    🚨 Cảnh báo vượt tiêu chuẩn QCVN 40:2011/Cột B
+                                </p>
+                                {outOfRange.map(k => (
+                                    <p key={k} style={{ fontSize: '0.8rem', color: '#B91C1C', marginBottom: '0.2rem' }}>
+                                        • {PARAM_THRESHOLDS[k].label}: {paramValues[k as keyof ParamValues]} {PARAM_THRESHOLDS[k].unit}
+                                    </p>
+                                ))}
+                                <p style={{ fontSize: '0.75rem', color: '#B91C1C', marginTop: '0.5rem', fontWeight: 600 }}>
+                                    → Báo cáo ngay cho HSE và lập biên bản trong vòng 2 giờ!
+                                </p>
+                            </div>
+                        )}
+
+                        {/* pH */}
+                        <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '1.25rem', border: '1px solid #E5E7EB' }}>
+                            <h3 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '1rem', color: '#374151' }}>⚗️ Chỉ số pH</h3>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
+                                <ParamInput label="pH đầu vào" unit="" fieldKey="ph_in" placeholder="vd: 7.2" />
+                                <ParamInput label="pH đầu ra" unit="" fieldKey="ph_out" placeholder="vd: 7.5" stdText="5.5–9.0" />
+                            </div>
                         </div>
-                    )
-                })}
+
+                        {/* DO + Bùn */}
+                        <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '1.25rem', border: '1px solid #E5E7EB' }}>
+                            <h3 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '1rem', color: '#374151' }}>🔬 Thông số sinh học</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                                <ParamInput label="DO bể MBBR" unit="mg/L" fieldKey="do_mbbr" placeholder="vd: 2.0" stdText="1.5–2.5" />
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
+                                    <ParamInput label="SV30" unit="ml/L" fieldKey="sv30_ml" placeholder="vd: 400" stdText="300–700" />
+                                    <ParamInput label="SVI" unit="ml/g" fieldKey="svi_ml_g" placeholder="vd: 100" stdText="≤150" />
+                                </div>
+                                <ParamInput label="MLSS" unit="mg/L" fieldKey="mlss_mg_l" placeholder="vd: 3000" stdText="2500–3500" />
+                            </div>
+                        </div>
+
+                        {/* COD + NH4 (weekly, nhưng ghi khi đo) */}
+                        <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '1.25rem', border: '1px solid #E5E7EB' }}>
+                            <h3 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '0.25rem', color: '#374151' }}>🧪 Chỉ tiêu đầu ra</h3>
+                            <p style={{ fontSize: '0.7rem', color: '#9CA3AF', marginBottom: '1rem' }}>Đo ít nhất 1 lần/tuần — ghi khi có kết quả</p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.875rem' }}>
+                                <ParamInput label="COD đầu ra" unit="mg/L" fieldKey="cod_out" placeholder="vd: 80" stdText="≤150" />
+                                <ParamInput label="NH₄⁺ đầu ra" unit="mg/L" fieldKey="nh4_out" placeholder="vd: 5" stdText="≤10" />
+                            </div>
+                        </div>
+
+                        {/* Lưu lượng + Điện */}
+                        <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '1.25rem', border: '1px solid #E5E7EB' }}>
+                            <h3 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '1rem', color: '#374151' }}>📏 Lưu lượng & Tiêu thụ</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                                <ParamInput label="Lưu lượng đầu ra" unit="m³/ngày" fieldKey="flow_out_m3" placeholder="vd: 45" stdText="≤70" />
+                                <ParamInput label="Chỉ số điện kế" unit="kWh" fieldKey="electricity_kwh" placeholder="vd: 12450" />
+                            </div>
+                        </div>
+
+                        {/* Ghi chú */}
+                        <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '1.25rem', border: '1px solid #E5E7EB' }}>
+                            <h3 style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '0.75rem', color: '#374151' }}>📝 Ghi chú sự cố</h3>
+                            <textarea
+                                value={paramValues.notes}
+                                onChange={e => setParamValues(p => ({ ...p, notes: e.target.value }))}
+                                placeholder="Ghi nhận sự cố bất thường, tình trạng thiết bị, hoặc ghi chú vận hành..."
+                                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #E5E7EB', minHeight: '80px', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }}
+                            />
+                        </div>
+                    </div>
+                )}
             </main>
 
-            {/* ── Bottom Action Bar ── */}
-            <div style={{
-                position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30,
-                backgroundColor: 'white', padding: '0.875rem 1rem', borderTop: '1px solid #E5E7EB',
-                display: 'flex', gap: '0.75rem',
-            }}>
-                {isLoggedIn ? (
-                    <>
-                        <button
-                            onClick={() => router.push(`/${siteId}/dashboard`)}
-                            style={{
-                                flex: '0 0 auto', padding: '0.75rem 1rem', borderRadius: '10px',
-                                border: '1px solid #E5E7EB', backgroundColor: 'white',
-                                fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: '#6B7280',
-                            }}
-                        >
-                            💾 Lưu nháp
-                        </button>
-                        <button
-                            onClick={handleSubmit}
-                            disabled={submitting || answered === 0}
-                            style={{
-                                flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none',
-                                backgroundColor: answered === 0 ? '#E5E7EB' : siteColor,
-                                color: answered === 0 ? '#9CA3AF' : 'white',
-                                fontWeight: 700, fontSize: '0.875rem', cursor: answered === 0 ? 'not-allowed' : 'pointer',
-                            }}
-                        >
-                            {submitting ? '⏳ Đang nộp...' : `📤 Nộp Báo Cáo (${answered}/${total})`}
-                        </button>
-                    </>
-                ) : (
-                    <button
-                        onClick={() => router.push('/login')}
-                        style={{
-                            flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none',
-                            backgroundColor: '#D97706', color: 'white',
-                            fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer',
-                        }}
-                    >
-                        🔐 Đăng nhập để đánh giá
-                    </button>
-                )}
+            {/* Bottom Action */}
+            <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30, backgroundColor: 'white', padding: '0.875rem 1rem', borderTop: '1px solid #E5E7EB', display: 'flex', gap: '0.75rem' }}>
+                <button
+                    onClick={() => router.back()}
+                    style={{ flex: '0 0 auto', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #E5E7EB', backgroundColor: 'white', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', color: '#6B7280' }}
+                >
+                    Hủy
+                </button>
+                <button
+                    onClick={handleSubmit}
+                    disabled={submitting || answered === 0}
+                    style={{
+                        flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none',
+                        backgroundColor: answered === 0 ? '#E5E7EB' : siteColor,
+                        color: answered === 0 ? '#9CA3AF' : 'white',
+                        fontWeight: 700, fontSize: '0.875rem',
+                        cursor: answered === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                >
+                    {submitting ? '⏳ Đang lưu...' : `📤 Nộp Nhật Ký (${answered}/${total} hạng mục)`}
+                </button>
             </div>
         </div>
     )
