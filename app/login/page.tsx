@@ -18,31 +18,36 @@ export default function LoginPage() {
         setLoading(true)
         setError('')
 
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
-        if (error) {
-            setError('Email hoặc mật khẩu không đúng')
+            if (error) {
+                setError('Email hoặc mật khẩu không đúng')
+                return
+            }
+
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('role, site_id')
+                .eq('id', data.user.id)
+                .single()
+
+            if (profile?.role === 'admin' || profile?.role === 'manager') {
+                router.push('/dashboard')
+            } else if (profile?.site_id) {
+                const { data: site } = await supabase
+                    .from('sites')
+                    .select('code')
+                    .eq('id', profile.site_id)
+                    .single()
+                router.push(`/${site?.code ?? 'long-an'}/dashboard`)
+            } else {
+                router.push('/dashboard')
+            }
+        } catch (err) {
+            setError('Lỗi kết nối. Vui lòng thử lại.')
+        } finally {
             setLoading(false)
-            return
-        }
-
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('role, site_id, sites(code)')
-            .eq('id', data.user.id)
-            .single()
-
-        setLoading(false)
-
-        const sitesObj: any = profile?.sites
-        const siteCode = Array.isArray(sitesObj) ? sitesObj[0]?.code : sitesObj?.code
-
-        if (profile?.role === 'manager' || profile?.role === 'admin') {
-            router.push('/dashboard')
-        } else if (siteCode) {
-            router.push(`/${siteCode}/dashboard`)
-        } else {
-            router.push('/dashboard')
         }
     }
 
