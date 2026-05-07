@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf .next)",
+      "Bash(npm run *)",
+      "Bash(npm i *)",
+      "Bash(vercel login *)",
+      "Bash(vercel --prod)",
+      "Bash(vercel --prod --scope vu386270-6030s-projects)",
+      "Bash(grep -E \"\\\\.\\(tsx?|js\\)$\")",
+      "Bash(vercel env *)",
+      "Bash(vercel link *)",
+      "Bash(vercel build *)",
+      "Bash(sed -i 's/export const revalidate = 0/export const revalidate = false/g' app/[site]/dashboard/page.tsx app/[site]/reports/page.tsx app/[site]/operator/page.tsx app/[site]/manager/page.tsx app/dashboard/page.tsx app/login/page.tsx)",
+      "Bash(vercel --prod --scope vu386270-6030s-projects --confirm)",
+      "Bash(sed -i '/export const dynamic/d' app/dashboard/page.tsx app/login/page.tsx \"app/[site]/manager/page.tsx\" \"app/[site]/operator/page.tsx\" \"app/[site]/reports/page.tsx\" \"app/[site]/dashboard/page.tsx\")",
+      "Bash(sed -i '/export const revalidate/d' app/dashboard/page.tsx app/login/page.tsx \"app/[site]/manager/page.tsx\" \"app/[site]/operator/page.tsx\" \"app/[site]/reports/page.tsx\" \"app/[site]/dashboard/page.tsx\")",
+      "Bash(sed 's/export default function ReportsPage\\(\\)/export default function ReportsClient\\(\\)/' \"app/[site]/reports/page.tsx\")",
+      "Bash(echo \"export const dynamic = 'force-dynamic'\")",
+      "Bash(echo \"import ReportsClient from './Client'\")",
+      "Bash(echo \"export default function Page\\(\\) { return <ReportsClient /> }\")",
+      "Bash(vercel ls *)",
+      "Bash(sed 's/export default function SiteDashboardPage\\(\\)/export default function SiteDashboardClient\\(\\)/' \"app/[site]/dashboard/page.tsx\")",
+      "Bash(echo \"import SiteDashboardClient from './Client'\")",
+      "Bash(echo \"export default function Page\\(\\) { return <SiteDashboardClient /> }\")",
+      "Bash(tail -30 \"C:\\\\Users\\\\Cashew\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Cashew--WWT--claude-worktrees-compassionate-shaw-b4db55\\\\1b264f82-d38f-48ca-a680-d8aecab58ff1\\\\tasks\\\\b51zdgpg2.output\")",
+      "Bash(vercel --prod --scope vu386270-6030s-projects --yes --debug)",
+      "Bash(vercel logs *)",
+      "Bash(NODE_DEBUG=vercel vercel --prod --scope vu386270-6030s-projects --yes)",
+      "Bash(vercel --prod --scope vu386270-6030s-projects --yes --no-clipboard)",
+      "Bash(vercel alias *)",
+      "Bash(git config *)",
+      "Bash(git filter-branch --env-filter ' *)",
+      "Bash(git add *)"
+    ]
+  }
+}

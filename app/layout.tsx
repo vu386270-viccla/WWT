@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './global.css'
+import { LanguageProvider } from './contexts/LanguageContext'
 
 export const metadata: Metadata = {
     title: 'VICC WWT Self-Assessment',
@@ -19,7 +20,11 @@ export default function RootLayout({
                 {/* Caveat font for Intersnack style script text */}
                 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet" />
             </head>
-            <body>{children}</body>
+            <body>
+                <LanguageProvider>
+                    {children}
+                </LanguageProvider>
+            </body>
         </html>
     )
 }

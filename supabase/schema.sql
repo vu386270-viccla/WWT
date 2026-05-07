@@ -6,15 +6,16 @@
 create table public.sites (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  name_en text not null,
   code text not null unique,  -- 'long-an' | 'tay-ninh' | 'phan-thiet'
   color_hex text not null,
   created_at timestamptz default now()
 );
 
-insert into public.sites (name, code, color_hex) values
-  ('Long An',    'long-an',    '#E30613'),
-  ('Tây Ninh',   'tay-ninh',   '#F39200'),
-  ('Phan Thiết', 'phan-thiet', '#0072B5');
+insert into public.sites (name, name_en, code, color_hex) values
+  ('Long An',    'Long An',    '#E30613'),
+  ('Tây Ninh',   'Tay Ninh',   '#F39200'),
+  ('Phan Thiết', 'Phan Thiet', '#0072B5');
 
 -- PROFILES (extends auth.users)
 create table public.profiles (
@@ -22,6 +23,7 @@ create table public.profiles (
   full_name text,
   role text not null check (role in ('operator', 'manager', 'admin')),
   site_id uuid references public.sites(id),  -- null = xem tất cả sites
+  language text not null default 'vi' check (language in ('vi', 'en')),
   created_at timestamptz default now()
 );
 
