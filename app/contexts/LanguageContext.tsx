@@ -160,6 +160,16 @@ const translations = {
     'guideline.violation': '🚨 Cảnh báo vượt tiêu chuẩn',
     'guideline.reportHSE': '→ Báo cáo ngay cho HSE và lập biên bản trong vòng 2 giờ!',
 
+    // Maintenance banner
+    'maintenance.title': 'Thông báo bảo trì',
+    'maintenance.message': 'Hệ thống đang được nâng cấp. Một số tính năng có thể không hoạt động. Xin lỗi vì sự bất tiện này.',
+    'maintenance.close': 'Đóng',
+
+    // Demo mode
+    'demo.button': 'Test Demo',
+    'demo.title': 'Chế độ Demo',
+    'demo.message': 'Bạn đang ở chế độ Demo. Dữ liệu chỉ mang tính minh họa.',
+
     // Site names
     'site.longAn': 'Long An',
     'site.tayNinh': 'Tây Ninh',
@@ -311,6 +321,16 @@ const translations = {
     'guideline.standard': 'QCVN 40:2011/Column B Standard',
     'guideline.violation': '🚨 Standard violation',
     'guideline.reportHSE': '→ Report to HSE immediately and document within 2 hours!',
+
+    // Maintenance banner
+    'maintenance.title': 'Maintenance Notice',
+    'maintenance.message': 'The system is currently being upgraded. Some features may be unavailable. We apologize for the inconvenience.',
+    'maintenance.close': 'Close',
+
+    // Demo mode
+    'demo.button': 'Test Demo',
+    'demo.title': 'Demo Mode',
+    'demo.message': 'You are in Demo Mode. Data is for illustration purposes only.',
 
     // Site names
     'site.longAn': 'Long An',

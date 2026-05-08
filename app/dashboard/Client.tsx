@@ -12,6 +12,7 @@ export default function DashboardClient() {
     const [summaries, setSummaries] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [userName, setUserName] = useState('')
+    const [showMaintenance, setShowMaintenance] = useState(true) // maintenance banner on by default
 
     const supabase = createClient()
     const now = new Date()
@@ -114,11 +115,67 @@ export default function DashboardClient() {
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     {userName && <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>👤 {userName}</span>}
                     <LanguageSwitcher />
+                    <button
+                        onClick={() => alert(`${t('demo.title')}: ${t('demo.message')}`)}
+                        style={{
+                            fontSize: '0.75rem',
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '8px',
+                            border: '1.5px solid #3B82F6',
+                            backgroundColor: '#EFF6FF',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                            color: '#2563EB'
+                        }}
+                    >
+                        {t('demo.button')}
+                    </button>
                     <button onClick={handleLogout} style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem', borderRadius: '8px', border: '1px solid #E5E7EB', backgroundColor: 'white', cursor: 'pointer', fontWeight: 600, color: '#6B7280' }}>
                         {t('nav.logout')}
                     </button>
                 </div>
             </header>
+
+            {showMaintenance && (
+                <div style={{
+                    backgroundColor: '#FEF3C7',
+                    border: '1px solid #FCD34D',
+                    borderRadius: '12px',
+                    padding: '1rem',
+                    margin: '0 1.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '1rem'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '1.25rem' }}>🔧</span>
+                        <div>
+                            <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.875rem' }}>
+                                {t('maintenance.title')}
+                            </div>
+                            <div style={{ color: '#92400E', fontSize: '0.8rem', opacity: 0.9 }}>
+                                {t('maintenance.message')}
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setShowMaintenance(false)}
+                        style={{
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '8px',
+                            border: '1px solid #FCD34D',
+                            backgroundColor: '#FEF3C7',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            color: '#92400E',
+                            fontSize: '0.75rem'
+                        }}
+                    >
+                        {t('maintenance.close')}
+                    </button>
+                </div>
+            )}
 
             <main style={{ padding: '1.5rem', maxWidth: '1100px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
